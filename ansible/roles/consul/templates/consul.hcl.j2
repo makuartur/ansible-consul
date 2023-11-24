@@ -1,0 +1,47 @@
+connect {
+  enabled=true
+}
+ports {
+  grpc = {{ grpc_port }}
+  grpc_tls = {{ grpc_tls_port }}
+}
+server=true
+retry_join=[
+{% for master in consul_masters %}
+    "{{master}}:{{serf_port}}",
+{% endfor %}
+],
+bootstrap_expect={{consul_masters|length}}
+ui_config {
+  enabled = true
+  metrics_provider = "prometheus"
+  metrics_proxy {
+    base_url = "http:/prometheus1:9090"
+  }
+{%- raw %}
+  dashboard_url_templates {
+    service = "http://prometheus1:3000/d/abcfd210-4b5c-4a1d-883b-c97b9dc754ed/services?orgId=1&var-Service={{Service.Name}}&refresh=5s"
+  }
+}
+{% endraw %}
+log_level = "debug"
+log_file = "{{log_dir}}/consul.log"
+encrypt = "s0YeZsTlnWqyckTMp4XG2r9Nxl3fDt2o1UWwRffYUuo="
+client_addr = "0.0.0.0"
+bind_addr = "{{bind_addr}}"
+data_dir = "{{data_dir}}"
+auto_encrypt {
+  allow_tls = true
+}
+tls{
+  defaults{
+    ca_file = "{{consul_ca_dir}}/consul-agent-ca.pem"
+    cert_file = "/etc/consul.d/dc1-server-consul-0.pem"
+    key_file = "/etc/consul.d/dc1-server-consul-0-key.pem"
+    verify_incoming = true
+    verify_outgoing = true
+  }
+  internal_rpc{
+   verify_server_hostname = true
+  }
+}

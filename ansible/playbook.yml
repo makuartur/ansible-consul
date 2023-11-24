@@ -1,0 +1,5 @@
+---
+- name: deploy consul
+  hosts: metrics
+  roles:
+    - { role: consul }

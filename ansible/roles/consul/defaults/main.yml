@@ -1,0 +1,11 @@
+---
+    consul_dir: "/etc/consul.d"
+    grpc_port: 8502
+    grpc_tls_port: 8503
+    serf_port: 8301
+    data_dir: "/opt/consul"
+    log_dir: "/var/log/consul"
+    bind_addr: "{{hostvars[inventory_hostname].ansible_host}}"
+    consul_ca_dir: "/usr/local/share/ca-certificates"
+    consul_cert_dir: "/etc/consul.d"
+...

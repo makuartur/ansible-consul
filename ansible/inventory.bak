@@ -1,0 +1,26 @@
+[consul_master]
+consul-master1 ansible_host=192.168.1.85
+consul-master2 ansible_host=192.168.1.81
+consul-master3 ansible_host=192.168.1.82
+[consul_master:vars]
+ansible_user=makuartur
+[consul_node]
+consul-node1 ansible_host=192.168.1.86
+consul-node2 ansible_host=192.168.1.87
+[consul_node:vars]
+ansible_user=makuartur
+[consul_ingress]
+consul-ingress1 ansible_host=192.168.1.88
+[consul_ingress:vars]
+ansible_user=makuartur
+[metrics]
+prometheus1 ansible_host=192.168.1.89 consul_dc=1 consul_server=0
+[metrics:vars]
+ansible_user=makuartur
+[all_consul:children]
+consul_master
+consul_node
+consul_ingress
+[all:vars]
+ansible_user=makuartur
+ansible_sudo_pass=sudo_pass

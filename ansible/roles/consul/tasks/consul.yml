@@ -1,0 +1,57 @@
+---
+  - name: Add GPG key
+    become: true
+    ansible.builtin.get_url:
+      url: https://apt.releases.hashicorp.com/gpg
+      dest: /usr/share/keyrings/hashicorp-archive-keyring.asc
+      mode: '0644'
+
+  - name: Add Consul apt repository
+    become: true
+    ansible.builtin.apt_repository:
+      repo: "deb \
+             [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.asc] \
+             https://apt.releases.hashicorp.com jammy main"
+      state: present
+
+  - name: Install consul
+    become: true
+    apt:
+      name: consul=1.17.0-1
+      state: present
+      update_cache: true
+  - name: Create directory for consul
+    become: true
+    file:
+      state: directory
+      path: "{{item}}"
+      mode: '0755'
+      owner: consul
+      group: consul
+    loop:
+      - "{{log_dir}}"
+      - "{{data_dir}}"
+      - "{{consul_dir}}"
+
+  - name: Copy file with owner and permissions
+    become: true
+    template:
+      src: consul.hcl.j2
+      dest: "{{consul_dir}}/consul.hcl"
+      owner: consul
+      group: consul
+      mode: '0644'
+          #    - name: Add consul CA
+          #become: true
+          #copy:
+          #src: consul-agent-ca.pem
+          #dest: "{{consul_ca_dir}}/consul-agent-ca.pem"
+          #mode: '0644'
+          #owner: consul
+          #group: consul
+          #    - name: Write keys in file
+          #become: true
+          #copy:
+          #content: "{{consul_server_dc1_0_key}}"
+          #dest: "{{consul_cert_dir}}/{{consul.key}}"
+...
