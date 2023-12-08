@@ -1,0 +1,23 @@
+---
+- name: Restart systemd-resolved
+  ansible.builtin.systemd:
+    name: systemd-resolved
+    state: restarted
+    enabled: true
+    daemon_reload: true
+
+- name: Restart consul
+  ansible.builtin.systemd:
+    name: consul
+    state: restarted
+    enabled: true
+    daemon_reload: true
+
+- name: Reload consul
+  ansible.builtin.systemd:
+    name: consul
+    state: reloaded
+    enabled: true
+    daemon_reload: true
+
+...

@@ -1,0 +1,7 @@
+[consul-server]
+consul-server-n1
+consul-server-n2
+consul-server-n3
+[consul-node]
+consul-node1
+consul-node2
