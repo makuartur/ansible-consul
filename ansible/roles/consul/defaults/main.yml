@@ -1,11 +1,18 @@
 ---
-    consul_dir: "/etc/consul.d"
-    grpc_port: 8502
-    grpc_tls_port: 8503
-    serf_port: 8301
-    data_dir: "/opt/consul"
-    log_dir: "/var/log/consul"
-    bind_addr: "{{hostvars[inventory_hostname].ansible_host}}"
-    consul_ca_dir: "/usr/local/share/ca-certificates"
-    consul_cert_dir: "/etc/consul.d"
+consul:
+    version: 1.17.0-1
+    service:
+        user: consul
+    storage:
+        data: /data/consul
+        config: /etc/consul.d
+        log: /var/log/consul
+        ssl: /etc/consul/ssl
+    config:
+        port:
+            grpc: 8502
+            grpc_tls: 8503
+            serf: 8301
+            dns: 8600
+        dc: 1
 ...

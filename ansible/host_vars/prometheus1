@@ -1,7 +1,0 @@
----
-consul:
- dc: 1
- server: 0
- key: dc1-server-consul-0-key.pem
- pem: dc1-server-consul-0.pem 
-...

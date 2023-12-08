@@ -1,2 +1,258 @@
 ---
-- include: "consul.yml"
+- name: Add consul group
+  ansible.builtin.group:
+    name: "{{ consul.service.user }}"
+    system: true
+    state: present
+
+- name: Add consul user
+  ansible.builtin.user:
+    name: "{{ consul.service.user }}"
+    system: true
+    shell: /sbin/nologin
+    group: "{{ consul.service.user }}"
+    createhome: false
+
+- name: Install consul dependencies
+  ansible.builtin.apt:
+    name: ["lsb-release", "curl", "gpg"]
+
+- name: Add Consul GPG key
+  ansible.builtin.get_url:
+    url: https://apt.releases.hashicorp.com/gpg
+    dest: /usr/share/keyrings/hashicorp-archive-keyring.asc
+    mode: 0644
+
+- name: Add Consul apt repository
+  become: true
+  ansible.builtin.apt_repository:
+    repo: "deb \
+          [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.asc] \
+          https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+    state: present
+
+- name: Install consul
+  become: true
+  ansible.builtin.apt:
+    name: consul={{ consul.version }}
+    state: present
+    update_cache: true
+
+- name: Create directories for consul
+  become: true
+  file:
+    state: directory
+    path: "{{item}}"
+    mode: '0755'
+    owner: "{{ consul.service.user }}"
+    group: "{{ consul.service.user }}"
+  loop:
+    - "{{consul.storage.data}}"
+    - "{{consul.storage.ssl}}"
+    - "{{consul.storage.config}}"
+    - "{{consul.storage.log}}"
+
+- name: Check if gossip encryption key already exists
+  ansible.builtin.stat:
+    path: "{{consul.storage.ssl}}/gossipKey"
+  register: gossipKeyFile
+
+- name: "HashiCorp - Consul : Encryption key."
+  block:
+    - name: "HashiCorp - Consul : Generate encryption key when cluster is not running yet."
+      block:
+        - name: "HashiCorp - Consul : Run the consul keygen command."
+          ansible.builtin.command: "consul keygen"
+          register: gossipKeyGen
+          changed_when: false
+        - name: "HashiCorp - Consul : Retrieve encryption key and store it as a fact."
+          ansible.builtin.set_fact:
+            consul:
+              gossipKey: "{{gossipKeyGen.stdout}}"
+      when:
+        - ansible_hostname in groups['consul-server']
+        - not gossipKeyFile.stat.exists
+  delegate_to: "{{ groups['consul-server'] | first }}"
+  run_once: true
+  when: consulGossipKey is not defined
+
+- name: Load data
+  slurp:
+    src: "{{consul.storage.ssl}}/gossipKey"
+  register: gossipKey
+  when:
+  - consulGossipKey is not defined
+  - gossipKeyFile.stat.exists
+
+- name: "HashiCorp - Consul : Retrieve encryption key is exists file"
+  ansible.builtin.set_fact:
+    consulGossipKey: "{{gossipKey.content | b64decode}}"
+  when:
+  - consulGossipKey is not defined
+  - gossipKeyFile.stat.exists
+
+- name: Write encryption key in file
+  copy:
+    content: "{{ consulGossipKey }}"
+    dest: "{{consul.storage.ssl}}/gossipKey"
+#TODO: сделать проверку на наличие обоих файлов и наличие обоих переменных
+- name: Check if CA key already exists
+  ansible.builtin.stat:
+    path: "{{consul.storage.ssl}}/consul-agent-ca-key.pem"
+  register: caKeyFile
+
+- name: Check if CA pem already exists
+  ansible.builtin.stat:
+    path: "{{consul.storage.ssl}}/consul-agent-ca.pem"
+  register: caPemFile
+
+- name: "HashiCorp - Consul : Generate CA."
+  block:
+    - name: "HashiCorp - Consul : Generate CA"
+      block:
+        - name: "HashiCorp - Consul : Run the consul tls ca create command"
+          ansible.builtin.command: "consul tls ca create"
+          args:
+            chdir: "{{consul.storage.ssl}}"
+          changed_when: false
+        - name: "HashiCorp - Consul : Get contents of CA pem."
+          slurp:
+            src: "{{consul.storage.ssl}}/consul-agent-ca.pem"
+          register: caPem
+        - name: "HashiCorp - Consul : Get contents of CA key pem."
+          slurp:
+            src: "{{consul.storage.ssl}}/consul-agent-ca-key.pem"
+          register: caKey
+        - name: "HashiCorp - Consul : Retrieve CA Key and store it as a fact."
+          become: true
+          ansible.builtin.set_fact:
+            consulCaKey: "{{caKey.content | b64decode }}"
+            consulCaPem: "{{caPem.content | b64decode}}"
+      when:
+        - ansible_hostname in groups['consul-server']
+        - not caKeyFile.stat.exists
+        - not caPemFile.stat.exists
+  delegate_to: "{{ groups['consul-server'] | first }}"
+  run_once: true
+  when: 
+  - consulCaKey is not defined
+  - consulCaPem is not defined
+
+
+- name: "HashiCorp - Consul : read ca from files"
+  block:
+    - name: "HashiCorp - Consul : Get contents of CA key."
+      slurp:
+        src: "{{consul.storage.ssl}}/consul-agent-ca-key.pem"
+      register: caKey
+    - name: "HashiCorp - Consul : Get contents of CA pem."
+      slurp:
+        src: "{{consul.storage.ssl}}/consul-agent-ca.pem"
+      register: caPem
+    - name: "HashiCorp - Consul : Retrieve CA Key and store it as a fact."
+      become: true
+      ansible.builtin.set_fact:
+        consulCaKey: "{{caKey.content | b64decode }}"
+        consulCaPem: "{{caPem.content | b64decode}}"
+  when:
+    - consulCaKey is not defined
+    - consulCaPem is not defined
+    - caPemFile.stat.exists
+    - caKeyFile.stat.exists
+- debug:
+    msg: "consulCaPem: {{consulCaPem}}, consulCaKey: {{consulCaKey}}"
+
+
+- name: Write CA in files
+  ansible.builtin.copy:
+    dest: "{{consul.storage.ssl}}/{{ item.dest }}"
+    content: "{{ item.content }}"
+    owner: "{{ consul.service.user }}"
+    group: "{{ consul.service.user }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - dest: "consul-agent-ca.pem"
+      content: "{{consulCaPem}}"
+      mode: "0644"
+    - dest: "consul-agent-ca-key.pem"
+      content: "{{consulCaKey}}"
+      mode: "0600"
+
+
+
+- name: Check if server key already exists
+  ansible.builtin.stat:
+    path: "{{consul.storage.ssl}}/dc1-server-consul-0-key.pem"
+  register: consulServerKeyFile
+
+- name: Check server CA pem already exists
+  ansible.builtin.stat:
+    path: "{{consul.storage.ssl}}/dc1-server-consul-0.pem"
+  register: consulServerPemFile
+
+- name: "HashiCorp - Consul : Generate server certificate."
+  block:
+    - name: "HashiCorp - Consul : Run the consul tls cert create -server command"
+      ansible.builtin.command: "consul tls cert create -server"
+      args:
+        chdir: "{{consul.storage.ssl}}"
+      changed_when: false
+    - name: "HashiCorp - Consul : Get contents of server pem."
+      slurp:
+        src: "{{consul.storage.ssl}}/dc1-server-consul-0.pem"
+      register: serverPem
+    - name: "HashiCorp - Consul : Get contents of server key."
+      slurp:
+        src: "{{consul.storage.ssl}}/dc1-server-consul-0-key.pem"
+      register: serverKey
+    - name: "HashiCorp - Consul : Retrieve CA Key and store it as a fact."
+      become: true
+      ansible.builtin.set_fact:
+        consulServerKey: "{{serverKey.content | b64decode }}"
+        consulServerPem: "{{serverPem.content | b64decode }}"
+  when:
+    - ansible_hostname in groups['consul-server']
+    - not consulServerKeyFile.stat.exists
+    - not consulServerPemFile.stat.exists
+    - consulServerKey is not defined
+    - consulServerPem is not defined
+
+- name: Write server certificate in files
+  ansible.builtin.copy:
+    dest: "{{consul.storage.ssl}}/{{ item.dest }}"
+    content: "{{ item.content }}"
+    owner: "{{ consul.service.user }}"
+    group: "{{ consul.service.user }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - dest: "dc1-server-consul-0.pem"
+      content: "{{consulServerPem}}"
+      mode: "0644"
+    - dest: "dc1-server-consul-0-key.pem"
+      content: "{{consulServerKey}}"
+      mode: "0600"
+  when:
+    - consulServerKey is defined
+    - consulServerPem is defined
+
+- name: Create systemd consul.serivce 
+  become: true
+  template:
+    src: consul.service.j2
+    dest: "/etc/systemd/system/consul.service"
+    owner: root
+    group: root
+    mode: '0644'
+  notify:  Restart consul
+
+- name: Create consul.hcl configuration file
+  become: true
+  template:
+    src: consul.hcl.j2
+    dest: "{{consul.storage.config}}/consul.hcl"
+    owner: "{{ consul.service.user }}"
+    group: "{{ consul.service.user }}"
+    mode: '0644'
+    validate: 'consul validate -config-format=hcl %s'
+  notify:  Restart consul
+...

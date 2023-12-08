@@ -1,8 +1,0 @@
----
-consul_masters: >-
-  {{
-    hostvars
-    | dict2items
-    | selectattr('key', 'in', groups.consul_master)
-    | map(attribute="key")
-  }}
